@@ -2,168 +2,127 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# ===============================
-# CABEÇALHO DO APP
-# ===============================
+st.set_page_config(page_title="SWS - Dashboard", layout="wide")
 
-st.set_page_config(page_title="SWS Dashboard 2025", layout="wide")
-
-st.markdown("""
-## Dashboard Streamlit para análise e filtragem dos arquivos SWS  
-### 👨‍🔧 Responsável Técnico: **Silva Adenilton (Denis) – Analista**
----
-""")
+st.title("Dashboard Streamlit para análise e filtragem dos arquivos SWS")
+st.caption("Responsável Técnico: **Silva Adenilton (Denis) - Analista**")
+st.markdown("---")
 
 # ===============================
 # UPLOAD DO ARQUIVO
 # ===============================
+uploaded_file = st.file_uploader("Envie o arquivo SWS (com abas SWS1 e SWS2)", type=["xlsx"])
 
-uploaded_file = st.file_uploader("Envie o arquivo SWS (xlsx)", type=["xlsx"])
+if uploaded_file:
+    st.success("Arquivo carregado com sucesso!")
+    xls = pd.ExcelFile(uploaded_file)
 
-if uploaded_file is None:
-    st.warning("Envie um arquivo para iniciar a análise.")
-    st.stop()
+    # ===============================
+    # SELETOR PRINCIPAL DE BASE
+    # ===============================
+    st.subheader("Selecione a Base de Análise")
+    escolha = st.radio("Escolha a base:", ["SWS1", "SWS2"], horizontal=True)
 
-df = pd.read_excel(uploaded_file)
+    df = pd.read_excel(uploaded_file, sheet_name=escolha)
 
-st.success("Arquivo carregado com sucesso!")
+    st.success(f"Base selecionada: {escolha}")
 
-# ===============================
-# SELEÇÃO DA BASE
-# ===============================
+    # ===============================
+    # FILTROS
+    # ===============================
+    st.markdown("---")
+    st.header("Filtros")
 
-st.subheader("Selecione a Base de Análise")
+    # → FILTRO: serial_number
+    serial_list = sorted(df["serial_number"].dropna().unique())
+    serial_sel = st.multiselect("Filtrar por Serial Number:", serial_list)
 
-base_escolhida = st.radio("Escolha:", ["SWS1", "SWS2"], horizontal=True)
+    # → FILTRO: prestador
+    prestador_list = sorted(df["prestador"].dropna().unique())
+    prestador_sel = st.multiselect("Filtrar por Prestador:", prestador_list)
 
-st.success(f"Base selecionada: **{base_escolhida}**")
+    # → FILTRO: Status
+    status_list = sorted(df["Status"].dropna().unique())
+    status_sel = st.multiselect("Filtrar por Status:", status_list)
 
-# Filtra somente linhas da base selecionada
-df_base = df[df["name"] == base_escolhida].copy()
+    # → FILTRO: error_msg
+    error_list = sorted(df["error_msg"].dropna().unique())
+    error_sel = st.multiselect("Filtrar por Erros:", error_list)
 
-# ===============================
-# TRATAMENTO E LIMPEZA
-# ===============================
+    # → FILTRO: intervalo de datas
+    if "work_date" in df.columns:
+        df["work_date"] = pd.to_datetime(df["work_date"], errors="coerce")
+        start_date = df["work_date"].min()
+        end_date = df["work_date"].max()
 
-# Remove colunas inúteis quando existirem
-colunas_remover = ["name.1", "path", "mac_address", "name"]
-df_base = df_base[[c for c in df_base.columns if c not in colunas_remover]]
+        date_range = st.date_input("Intervalo de Datas:", value=[start_date, end_date])
+        dt_start, dt_end = date_range
 
-# Garantir tipos corretos
-if "work_date" in df_base.columns:
-    df_base["work_date"] = pd.to_datetime(df_base["work_date"], errors="coerce")
+    # ===============================
+    # APLICANDO FILTROS
+    # ===============================
+    df_filt = df.copy()
 
-# ===============================
-# FILTROS
-# ===============================
+    if serial_sel:
+        df_filt = df_filt[df_filt["serial_number"].isin(serial_sel)]
 
-st.subheader("Filtros")
+    if prestador_sel:
+        df_filt = df_filt[df_filt["prestador"].isin(prestador_sel)]
 
-# ---- Serial Number ----
-if "serial_number" in df_base.columns:
-    serial_list = sorted(df_base["serial_number"].dropna().unique())
-    serial_filter = st.multiselect("Filtrar por Serial Number:", serial_list)
-    if serial_filter:
-        df_base = df_base[df_base["serial_number"].isin(serial_filter)]
+    if status_sel:
+        df_filt = df_filt[df_filt["Status"].isin(status_sel)]
 
-# ---- Prestador ----
-if "prestador" in df_base.columns:
-    prestador_list = sorted(df_base["prestador"].dropna().unique())
-    prestador_filter = st.multiselect("Filtrar por Prestador:", prestador_list)
-    if prestador_filter:
-        df_base = df_base[df_base["prestador"].isin(prestador_filter)]
+    if error_sel:
+        df_filt = df_filt[df_filt["error_msg"].isin(error_sel)]
 
-# ---- Filtro por Data ----
-if "work_date" in df_base.columns:
-    min_date = df_base["work_date"].min()
-    max_date = df_base["work_date"].max()
+    if "work_date" in df_filt.columns:
+        df_filt = df_filt[(df_filt["work_date"] >= pd.to_datetime(dt_start)) &
+                          (df_filt["work_date"] <= pd.to_datetime(dt_end))]
 
-    date_range = st.date_input(
-        "Filtrar por período (work_date):",
-        (min_date, max_date)
-    )
+    # ===============================
+    # RESULTADOS
+    # ===============================
+    st.markdown("---")
+    st.header("Resultados da Análise")
 
-    if isinstance(date_range, tuple):
-        df_base = df_base[
-            (df_base["work_date"] >= pd.to_datetime(date_range[0])) &
-            (df_base["work_date"] <= pd.to_datetime(date_range[1]))
-        ]
+    if df_filt.empty:
+        st.warning("Nenhum dado encontrado com os filtros aplicados.")
+        st.stop()
 
-# ---- Status ----
-if "Status" in df_base.columns:
-    status_list = sorted(df_base["Status"].dropna().unique())
-    status_filter = st.multiselect("Filtrar por Status:", status_list)
-    if status_filter:
-        df_base = df_base[df_base["Status"].isin(status_filter)]
+    st.subheader("Pré-visualização dos dados filtrados:")
+    st.dataframe(df_filt, use_container_width=True)
 
-# ---- Errors ----
-if "error_msg" in df_base.columns:
-    error_list = sorted(df_base["error_msg"].dropna().unique())
-    error_filter = st.multiselect("Filtrar por Erros:", error_list)
-    if error_filter:
-        df_base = df_base[df_base["error_msg"].isin(error_filter)]
+    # SOMATÓRIOS
+    total_effective = df_filt["over_effective_area"].sum()
+    total_not_effective = df_filt["over_not_effective_area"].sum()
 
-# ===============================
-# SOMATÓRIOS
-# ===============================
+    st.subheader("Somatórios")
+    col1, col2 = st.columns(2)
 
-st.markdown("---")
-st.subheader("Somatórios de Áreas")
+    with col1:
+        st.metric("Área Efetiva Total", f"{total_effective:,.2f}")
 
-col1, col2 = st.columns(2)
+    with col2:
+        st.metric("Área Não Efetiva Total", f"{total_not_effective:,.2f}")
 
-with col1:
-    soma_efetiva = df_base["over_effective_area"].sum()
-    st.metric("Área Efetiva Total", f"{soma_efetiva:,.2f}")
+    # ===============================
+    # GRÁFICOS
+    # ===============================
+    st.markdown("---")
+    st.header("Gráficos")
 
-with col2:
-    soma_nao_efetiva = df_base["over_not_effective_area"].sum()
-    st.metric("Área Não Efetiva Total", f"{soma_nao_efetiva:,.2f}")
-
-# ===============================
-# GRÁFICOS
-# ===============================
-
-st.markdown("---")
-st.subheader("Gráficos de Distribuição")
-
-# ---- Status ----
-if "Status" in df_base.columns:
-    fig_status = px.pie(
-        df_base,
-        names="Status",
-        title="Distribuição por Status",
-        hole=0.45
-    )
+    # Pizza de Status
+    fig_status = px.pie(df_filt, names="Status", title="Distribuição por Status")
     st.plotly_chart(fig_status, use_container_width=True)
 
-# ---- Prestador ----
-if "prestador" in df_base.columns:
-    fig_prestador = px.bar(
-        df_base,
-        x="prestador",
-        title="Quantidade por Prestador"
-    )
+    # Pizza de Prestadores
+    fig_prestador = px.pie(df_filt, names="prestador", title="Distribuição por Prestador")
     st.plotly_chart(fig_prestador, use_container_width=True)
 
-# ===============================
-# ANÁLISE DE ERROS
-# ===============================
+    # Barras por Erros
+    fig_erro = px.bar(df_filt.groupby("error_msg").size().reset_index(name="count"),
+                      x="error_msg", y="count", title="Erros Encontrados")
+    st.plotly_chart(fig_erro, use_container_width=True)
 
-st.markdown("---")
-st.subheader("Erros Encontrados")
-
-df_erros = df_base[df_base["error_msg"].notna() & (df_base["error_msg"] != "")]
-st.dataframe(df_erros)
-
-# ===============================
-# TABELA FINAL
-# ===============================
-
-st.markdown("---")
-st.subheader("Tabela Final Filtrada")
-
-st.dataframe(df_base, use_container_width=True)
-
-# Rodapé
-st.caption("Sistema SWS - Análise 2025 • Desenvolvido com Streamlit")
+    st.markdown("---")
+    st.caption("Sistema SWS - Desenvolvido por Silva Adenilton (Denis)")
