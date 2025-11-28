@@ -1,86 +1,185 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-st.set_page_config(page_title="SWS Dashboard", layout="wide")
+st.set_page_config(page_title="Dashboard SWS 2025", layout="wide")
 
-# =====================================
-# INTERFACE
-# =====================================
-st.title("Dashboard SWS • Filtragem Profissional")
-st.subheader("SWS1 • SWS2 — Controle e Análise")
-st.write("Filtros atualizados conforme necessidade operacional.")
+# ===========================================================
+#  TÍTULO / CABEÇALHO
+# ===========================================================
+st.markdown("""
+# 📊 Dashboard Streamlit – Análise e Filtragem dos Arquivos SWS  
 
-# =====================================
-# UPLOAD DO ARQUIVO
-# =====================================
+### 👨‍🔧 **Responsável Técnico: Silva Adenilton (Denis) – Analista**
+---
+""")
+
+# ===========================================================
+#  UPLOAD DE ARQUIVO
+# ===========================================================
 uploaded_file = st.file_uploader(
-    "Envie o arquivo contendo as abas SWS1 e SWS2",
+    "Envie o arquivo SWS (XLSX)", 
     type=["xlsx"]
 )
 
-if uploaded_file:
+if not uploaded_file:
+    st.warning("Envie um arquivo para continuar.")
+    st.stop()
 
-    try:
-        xls = pd.ExcelFile(uploaded_file)
+df = pd.read_excel(uploaded_file)
 
-        # Pega apenas abas SWS
-        abas_validas = [a for a in xls.sheet_names if "SWS" in a.upper()]
+# Ajustando datas
+if "work_date" in df.columns:
+    df["work_date"] = pd.to_datetime(df["work_date"], errors="coerce")
 
-        aba = st.selectbox("Escolha a base de análise:", abas_validas)
-        df = pd.read_excel(uploaded_file, sheet_name=aba)
+# ===========================================================
+#  BOTÕES DE SELEÇÃO DA BASE (SWS1 / SWS2)
+# ===========================================================
+st.subheader("Selecione a Base para Análise")
 
-        st.success(f"Aba carregada: {aba}")
-        st.markdown("---")
+col1, col2 = st.columns(2)
 
-        # Limpeza básica
-        df.columns = [c.strip() for c in df.columns]
+base_selected = None
+with col1:
+    if st.button("🟦 SWS1", use_container_width=True):
+        base_selected = "SWS1"
+with col2:
+    if st.button("🟩 SWS2", use_container_width=True):
+        base_selected = "SWS2"
 
-        # =====================================
-        # DEFINIR COLUNAS QUE DEVEM TER FILTRO
-        # =====================================
+if not base_selected:
+    st.info("Escolha uma base para continuar.")
+    st.stop()
 
-        filtros_desejados = {
-            "serial_number": None,
-            "prestador": None,
-            "STATUS_SCHEDULED": None,  # ou a coluna exata que houver
-            "error_msg": None
-        }
+df_base = df[df["base"] == base_selected]
 
-        # Verificar quais dessas colunas existem no arquivo
-        colunas_disponiveis = {col.lower(): col for col in df.columns}
+st.success(f"Base selecionada: **{base_selected}**")
 
-        filtros_presentes = {}
-        for f in filtros_desejados:
-            if f.lower() in colunas_disponiveis:
-                filtros_presentes[f] = colunas_disponiveis[f.lower()]
+# ===========================================================
+#  FILTROS PRINCIPAIS
+# ===========================================================
 
-        # =====================================
-        # FILTROS EXATOS DO JEITO QUE VOCÊ PEDIU
-        # =====================================
-        st.markdown("### 🔎 Filtros disponíveis")
+st.markdown("## 🔍 Filtros")
 
-        for chave, coluna_real in filtros_presentes.items():
-            valores_unicos = sorted(df[coluna_real].dropna().unique().tolist())
-            selecionados = st.multiselect(f"Filtrar por {coluna_real}:", valores_unicos)
-            if selecionados:
-                df = df[df[coluna_real].isin(selecionados)]
+serial_list = sorted(df_base["serial_number"].dropna().unique())
+prestador_list = sorted(df_base["prestador"].dropna().unique())
 
-        st.markdown("---")
+colA, colB, colC = st.columns(3)
 
-        # =====================================
-        # RESULTADO FILTRADO
-        # =====================================
-        st.markdown("### Resultado filtrado")
-        st.write(f"Total de registros filtrados: **{len(df)}**")
+with colA:
+    serial_filter = st.multiselect(
+        "Filtrar por SERIAL_NUMBER:",
+        serial_list,
+        default=None
+    )
 
-        st.dataframe(df, use_container_width=True)
+with colB:
+    prestador_filter = st.multiselect(
+        "Filtrar por PRESTADOR:",
+        prestador_list,
+        default=None
+    )
 
-    except Exception as e:
-        st.error(f"Erro ao processar arquivo: {e}")
+with colC:
+    dates = st.date_input(
+        "Filtrar por Work Date (intervalo):",
+        value=[]
+    )
 
-# =====================================
-# RODAPÉ
-# =====================================
+# Aplicar filtros
+if serial_filter:
+    df_base = df_base[df_base["serial_number"].isin(serial_filter)]
+
+if prestador_filter:
+    df_base = df_base[df_base["prestador"].isin(prestador_filter)]
+
+if len(dates) == 2:
+    df_base = df_base[(df_base["work_date"] >= pd.Timestamp(dates[0])) &
+                      (df_base["work_date"] <= pd.Timestamp(dates[1]))]
+
+# ===========================================================
+#  SOMATÓRIOS PRINCIPAIS
+# ===========================================================
+
+area_ok = df_base["over_effective_area"].sum()
+area_not_ok = df_base["over_not_effective_area"].sum()
+
+st.markdown("## 📐 Indicadores Gerais")
+
+col1, col2 = st.columns(2)
+col1.metric("Área Efetiva Total", f"{area_ok:,.2f}")
+col2.metric("Área Não Efetiva Total", f"{area_not_ok:,.2f}")
+
+# ===========================================================
+#  GRÁFICO DE PIZZA - EFETIVA x NÃO EFETIVA
+# ===========================================================
+st.markdown("### 🥧 Distribuição de Áreas")
+
+pie_data = pd.DataFrame({
+    "Tipo": ["Efetiva", "Não Efetiva"],
+    "Valor": [area_ok, area_not_ok]
+})
+
+fig_pie = px.pie(
+    pie_data,
+    names="Tipo",
+    values="Valor",
+    color="Tipo",
+    color_discrete_map={"Efetiva": "green", "Não Efetiva": "red"},
+    title="Comparação de Áreas"
+)
+
+st.plotly_chart(fig_pie, use_container_width=True)
+
+# ===========================================================
+#  GRÁFICO DE BARRAS POR PRESTADOR
+# ===========================================================
+st.markdown("### 📊 Produção por Prestador")
+
+df_prest = df_base.groupby("prestador")["over_effective_area"].sum().reset_index()
+
+fig_bar = px.bar(
+    df_prest,
+    x="prestador",
+    y="over_effective_area",
+    title="Área Efetiva por Prestador",
+    text_auto=True
+)
+
+st.plotly_chart(fig_bar, use_container_width=True)
+
+# ===========================================================
+#  ÁREA DE STATUS E ERROS
+# ===========================================================
 st.markdown("---")
-st.caption("Sistema SWS - Análise 2025 • Desenvolvido com Streamlit")
-st.caption("Responsável Técnico: **Silva Adenilton ( Denis ) – Analista**")
+st.markdown("## ⚠️ Análise de Status e Erros")
+
+col_s1, col_s2 = st.columns(2)
+
+with col_s1:
+    serial_sel = st.selectbox("Filtrar por Serial:", serial_list)
+
+with col_s2:
+    prest_sel = st.selectbox("Filtrar por Prestador:", prestador_list)
+
+df_status = df[(df["serial_number"] == serial_sel) &
+               (df["prestador"] == prest_sel)]
+
+if df_status.empty:
+    st.info("Nenhum registro encontrado para esta combinação.")
+else:
+    st.dataframe(df_status[["serial_number", "prestador", "status", "error_msg"]])
+
+    fig_status = px.histogram(
+        df_status,
+        x="status",
+        color="status",
+        title="Distribuição de Status"
+    )
+    st.plotly_chart(fig_status, use_container_width=True)
+
+# ===========================================================
+#  RODAPÉ
+# ===========================================================
+st.markdown("---")
+st.caption("Sistema SWS - Análise 2025 • Desenvolvido por Silva Adenilton (Denis) com Streamlit")
