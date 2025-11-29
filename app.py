@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# ===============================
+# CONFIGURAÇÃO DA PÁGINA
+# ===============================
 st.set_page_config(page_title="SWS - Dashboard", layout="wide")
 
 st.title("Dashboard Streamlit para análise e filtragem dos arquivos SWS")
@@ -45,9 +48,15 @@ if uploaded_file:
     status_list = sorted(df["Status"].dropna().unique())
     status_sel = st.multiselect("Filtrar por Status:", status_list)
 
-    # → FILTRO: error_msg
-    error_list = sorted(df["error_msg"].dropna().unique())
-    error_sel = st.multiselect("Filtrar por Erros:", error_list)
+    # → FILTRO: error_msg (corrigido)
+    if "error_msg" in df.columns:
+        df["error_msg"] = df["error_msg"].astype(str).str.strip()
+        error_list = sorted(
+            [e for e in df["error_msg"].unique() if e not in ["", "nan", "None"]]
+        )
+        error_sel = st.multiselect("Filtrar por Erros:", error_list)
+    else:
+        error_sel = []
 
     # → FILTRO: intervalo de datas
     if "work_date" in df.columns:
@@ -76,8 +85,10 @@ if uploaded_file:
         df_filt = df_filt[df_filt["error_msg"].isin(error_sel)]
 
     if "work_date" in df_filt.columns:
-        df_filt = df_filt[(df_filt["work_date"] >= pd.to_datetime(dt_start)) &
-                          (df_filt["work_date"] <= pd.to_datetime(dt_end))]
+        df_filt = df_filt[
+            (df_filt["work_date"] >= pd.to_datetime(dt_start)) &
+            (df_filt["work_date"] <= pd.to_datetime(dt_end))
+        ]
 
     # ===============================
     # RESULTADOS
@@ -119,10 +130,30 @@ if uploaded_file:
     fig_prestador = px.pie(df_filt, names="prestador", title="Distribuição por Prestador")
     st.plotly_chart(fig_prestador, use_container_width=True)
 
-    # Barras por Erros
-    fig_erro = px.bar(df_filt.groupby("error_msg").size().reset_index(name="count"),
-                      x="error_msg", y="count", title="Erros Encontrados")
-    st.plotly_chart(fig_erro, use_container_width=True)
+    # ==================================
+    # NOVO GRÁFICO MELHORADO DE ERROS
+    # ==================================
+    st.subheader("Top Erros Encontrados")
+
+    df_erros = (
+        df_filt.groupby("error_msg")
+        .size()
+        .reset_index(name="count")
+        .sort_values(by="count", ascending=False)
+        .head(10)
+    )
+
+    fig_erros = px.bar(
+        df_erros,
+        x="count",
+        y="error_msg",
+        orientation="h",
+        title="Top 10 Erros mais Frequentes",
+    )
+
+    fig_erros.update_layout(yaxis_title="Erro", xaxis_title="Quantidade")
+
+    st.plotly_chart(fig_erros, use_container_width=True)
 
     st.markdown("---")
     st.caption("Sistema SWS - Desenvolvido por Silva Adenilton (Denis)")
