@@ -4,14 +4,14 @@ import plotly.express as px
 import base64
 
 # ============================================================
-#  FUNÇÃO: Fundo Profissional Moderno
+#  FUNÇÃO: Fundo com imagem
 # ============================================================
 def add_bg_from_local(image_file: str, opacity: float = 0.25):
     try:
         with open(image_file, "rb") as img:
             encoded = base64.b64encode(img.read()).decode()
-    except Exception as e:
-        st.warning(f"⚠ Não foi possível carregar a imagem de fundo.\n\nVerifique o caminho:\n{image_file}")
+    except Exception:
+        st.warning(f"⚠ Não foi possível carregar a imagem de fundo.\nVerifique o caminho:\n{image_file}")
         return
 
     css = f"""
@@ -40,22 +40,16 @@ def add_bg_from_local(image_file: str, opacity: float = 0.25):
         position: relative;
         z-index: 1;
     }}
-
-    .css-1d391kg, .css-12oz5g7 {{
-        background: rgba(18,18,18,0.35) !important;
-        backdrop-filter: blur(5px);
-        border-radius: 12px;
-        padding: 10px !important;
-    }}
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
 
+
 # ============================================================
-# APLICAR IMAGEM DE FUNDO (CAMINHO CORRIGIDO)
+#  CAMINHO DA IMAGEM — FINAL E CORRETO
 # ============================================================
 add_bg_from_local(
-    r"C:\Users\adenilton.silva\OneDrive – Hexagon\Desktop\Dia a Dia\Banco_Operacional_Dados\6.800– Centro Especializado\extração Banco\imagesbackground.png",
+    r"C:\Users\adenilton.silva\OneDrive - Hexagon\Pictures\imagesbackground.png",
     opacity=0.28
 )
 
@@ -244,13 +238,13 @@ if uploaded:
 
     if error_col:
         st.subheader("🧭 Distribuição de Erros")
-        df_err = df_f[error_col].replace({"":"Sem erro"}).value_counts().head(10).reset_index()
-        df_err.columns = ["Erro","Total"]
+        df_err = df_f[error_col].replace({"": "Sem erro"}).value_counts().head(10).reset_index()
+        df_err.columns = ["Erro", "Total"]
         st.plotly_chart(px.pie(df_err, names="Erro", values="Total"), use_container_width=True)
 
     if prestador_col and eff_col and not_eff_col:
         st.subheader("🔁 Efetiva x Não Efetiva por Prestador")
-        df_p = df_f.groupby(prestador_col)[[eff_col,not_eff_col]].sum().reset_index()
+        df_p = df_f.groupby(prestador_col)[[eff_col, not_eff_col]].sum().reset_index()
         df_p = df_p.sort_values(eff_col, ascending=False).head(10)
         df_m = df_p.melt(id_vars=prestador_col, var_name="Tipo", value_name="Área")
         st.plotly_chart(px.bar(df_m, x="Área", y=prestador_col, color="Tipo", orientation="h"), use_container_width=True)
