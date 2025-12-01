@@ -10,7 +10,8 @@ def add_bg_from_local(image_file: str, opacity: float = 0.25):
     try:
         with open(image_file, "rb") as img:
             encoded = base64.b64encode(img.read()).decode()
-    except Exception:
+    except Exception as e:
+        st.warning(f"⚠ Não foi possível carregar a imagem de fundo.\n\nVerifique o caminho:\n{image_file}")
         return
 
     css = f"""
@@ -20,10 +21,9 @@ def add_bg_from_local(image_file: str, opacity: float = 0.25):
         background-size: cover !important;
         background-position: center !important;
         background-attachment: fixed !important;
-        filter: brightness(1.03);
+        filter: brightness(1.05);
     }}
 
-    /* Camada escura suave */
     .stApp::before {{
         content: "";
         position: fixed;
@@ -41,7 +41,6 @@ def add_bg_from_local(image_file: str, opacity: float = 0.25):
         z-index: 1;
     }}
 
-    /* Painéis */
     .css-1d391kg, .css-12oz5g7 {{
         background: rgba(18,18,18,0.35) !important;
         backdrop-filter: blur(5px);
@@ -52,8 +51,13 @@ def add_bg_from_local(image_file: str, opacity: float = 0.25):
     """
     st.markdown(css, unsafe_allow_html=True)
 
-# Aplica imagem panorâmica como fundo
-add_bg_from_local("/mnt/data/imagesbackground.png", opacity=0.28)
+# ============================================================
+# APLICAR IMAGEM DE FUNDO (CAMINHO CORRIGIDO)
+# ============================================================
+add_bg_from_local(
+    r"C:\Users\adenilton.silva\OneDrive – Hexagon\Desktop\Dia a Dia\Banco_Operacional_Dados\6.800– Centro Especializado\extração Banco\imagesbackground.png",
+    opacity=0.28
+)
 
 # ============================================================
 # Configuração
@@ -83,10 +87,21 @@ if uploaded:
 
     st.success("Arquivo carregado com sucesso!")
 
-    # Remove planilha CDG
-    valid_sheets = [s for s in sheets_dict if s.lower() != "alarmes - cdg".lower()]
+    # ============================================================
+    #  REMOVER ABA "Alarmes - CDG"
+    # ============================================================
+    valid_sheets = [
+        s for s in sheets_dict
+        if s.lower().strip() not in ["alarmes - cdg", "alarmes-cdg", "cdg", "alarme cdg"]
+    ]
 
-    # Seleção destacada
+    if not valid_sheets:
+        st.error("Nenhuma planilha válida encontrada (SWS1 / SWS2).")
+        st.stop()
+
+    # ============================================================
+    #  SELETOR DESTACADO
+    # ============================================================
     st.markdown("""
     <div style="
         background: rgba(255,255,255,0.1);
@@ -105,11 +120,11 @@ if uploaded:
     df = sheets_dict[selected_sheet]
 
     # ============================================================
-    # LIMPEZA DE COLUNAS
+    # NORMALIZAR COLUNAS
     # ============================================================
     df.columns = [str(c).strip().lower() for c in df.columns]
 
-    # Mapear possíveis colunas
+    # Detectar colunas
     date_col = next((c for c in ["date", "work_date", "data"] if c in df.columns), None)
     code_col = next((c for c in ["code", "codigo"] if c in df.columns), None)
     eff_col = next((c for c in ["over_effective_area","effective_area"] if c in df.columns), None)
@@ -119,7 +134,6 @@ if uploaded:
     status_col = "status" if "status" in df.columns else None
     error_col = "error_msg" if "error_msg" in df.columns else None
 
-    # Conversões
     if date_col:
         df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     if eff_col:
@@ -155,9 +169,11 @@ if uploaded:
     else:
         status_sel = []
 
-    # Erros
+    # Erros (corrigido!)
     if error_col:
-        ops = ["Todos"] + sorted([e for e in df[error_col].unique() if str(e).strip()!=""])
+        ops = ["Todos"] + sorted(
+            [str(e).strip() for e in df[error_col].unique() if str(e).strip() != ""]
+        )
         error_sel = clear(st.sidebar.multiselect("Erros", ops, default=["Todos"]))
     else:
         error_sel = []
@@ -215,27 +231,23 @@ if uploaded:
     # Gráficos
     # ============================================================
 
-    # Top códigos
     if code_col:
         st.subheader("🏷️ Top 10 Códigos")
         df_codes = df_f[code_col].astype(str).value_counts().head(10).reset_index()
         df_codes.columns = ["Código", "Quantidade"]
         st.plotly_chart(px.bar(df_codes, x="Código", y="Quantidade"), use_container_width=True)
 
-    # Evolução
     if date_col and eff_col:
         st.subheader("📈 Evolução da Área Efetiva")
         df_time = df_f.groupby(date_col)[eff_col].sum().reset_index()
         st.plotly_chart(px.line(df_time, x=date_col, y=eff_col, markers=True), use_container_width=True)
 
-    # Erros
     if error_col:
         st.subheader("🧭 Distribuição de Erros")
         df_err = df_f[error_col].replace({"":"Sem erro"}).value_counts().head(10).reset_index()
         df_err.columns = ["Erro","Total"]
         st.plotly_chart(px.pie(df_err, names="Erro", values="Total"), use_container_width=True)
 
-    # Prestadores
     if prestador_col and eff_col and not_eff_col:
         st.subheader("🔁 Efetiva x Não Efetiva por Prestador")
         df_p = df_f.groupby(prestador_col)[[eff_col,not_eff_col]].sum().reset_index()
