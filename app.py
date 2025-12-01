@@ -3,6 +3,40 @@ import pandas as pd
 import base64
 
 # ============================================================
+# CONFIGURAÇÃO DE TEMA (clarear textos)
+# ============================================================
+st.markdown("""
+<style>
+/* Clarear texto dos filtros */
+.stSelectbox label, .stSelectbox div, .stSelectbox span,
+.css-16huue1, .css-1d391kg, .st-b7, .st-bs {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+}
+
+/* Sidebar */
+.sidebar .sidebar-content, .stSidebar, .css-1d391kg {
+    color: #ffffff !important;
+}
+
+/* Texto dos inputs e opções */
+div[data-baseweb="select"] * {
+    color: #ffffff !important;
+}
+
+/* Clarear dropdown */
+.stSelectbox [data-baseweb="popover"] * {
+    color: #000000 !important;
+}
+
+/* Títulos */
+h1, h2, h3, h4 {
+    color: #f1f1f1 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
 # LOGO SUPERIOR
 # ============================================================
 def load_logo(image_path):
@@ -17,10 +51,10 @@ def load_logo(image_path):
                 <img src='data:image/png;base64,{encoded}'
                      style='width:110px; height:auto; border-radius:8px;'>
                 <div>
-                    <h1 style='margin:0; padding:0; font-size:36px; color:#000;'>
+                    <h1 style='margin:0; padding:0; font-size:36px; color:#fff;'>
                         📊 Análise Técnica — Arquivos Enviados (SWS)
                     </h1>
-                    <h4 style='margin:0; padding:0; color:#444;'>
+                    <h4 style='margin:0; padding:0; color:#ddd;'>
                         Dashboard interativa | Desenvolvido por <b>Silva Adenilton (Denis)</b>
                     </h4>
                 </div>
@@ -62,9 +96,9 @@ except Exception as e:
 st.success("Arquivo carregado com sucesso!")
 
 # ============================================================
-# AJUSTAR NOMES DE COLUNAS
+# AJUSTAR NOMES DE COLUNAS (correção do erro)
 # ============================================================
-df.columns = [c.strip().lower() for c in df.columns]
+df.columns = [str(c).strip().lower() for c in df.columns]
 
 required_cols = [
     "prestador", "serial_number", "status",
