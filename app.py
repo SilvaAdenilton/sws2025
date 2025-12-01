@@ -3,189 +3,147 @@ import pandas as pd
 import plotly.express as px
 import base64
 
-# ============================================================
-# ESTILO CLEAN COM BANNER NO TOPO
-# ============================================================
-def load_banner(image_path):
+# -------------------------------------------------------------
+# Função: Carregar logo no topo (IMAGEM PEQUENA)
+# -------------------------------------------------------------
+def load_logo(image_path):
     try:
         with open(image_path, "rb") as img:
             encoded = base64.b64encode(img.read()).decode()
+
         st.markdown(
             f"""
-            <div style='width:100%;height:180px;overflow:hidden;margin-bottom:15px;border-radius:8px;'>
-                <img src='data:image/png;base64,{encoded}' 
-                     style='width:100%;object-fit:cover;'>
+            <div style='display:flex; align-items:center; gap:15px; margin-bottom:25px;'>
+                <img src='data:image/png;base64,{encoded}'
+                     style='width:110px; height:auto; border-radius:6px;'>
+
+                <div>
+                    <h1 style='margin:0; padding:0; font-size:40px; color:#000;'>
+                        📊 Análise Técnica — Arquivos Enviados (SWS)
+                    </h1>
+
+                    <h4 style='margin:0; padding:0; color:#444;'>
+                        Dashboard interativa | Desenvolvido por <b>Silva Adenilton (Denis)</b>
+                    </h4>
+                </div>
             </div>
             """,
             unsafe_allow_html=True
         )
     except:
-        st.warning("⚠ Não foi possível carregar o banner superior.")
+        st.warning("⚠ Não foi possível carregar o logo (imagem não encontrada no GitHub).")
 
 
-# ============================================================
-# CONFIGURAÇÃO DA PÁGINA
-# ============================================================
+# -------------------------------------------------------------
+# Configurações gerais da página
+# -------------------------------------------------------------
 st.set_page_config(
-    page_title="Análise Técnica — SWS",
+    page_title="Análise SWS",
     layout="wide",
-    initial_sidebar_state="expanded"
 )
 
-# CSS clean e sidebar estreita
-st.markdown("""
-<style>
+# Fundo branco TOTAL
+st.markdown(
+    """
+    <style>
+        body, .stApp {
+            background-color: white !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-.stApp {
-    background-color: #FFFFFF !important;
-}
+# Carrega LOGO DO TOPO
+load_logo("images/baixados.png")
 
-/* Sidebar mais fina */
-section[data-testid="stSidebar"] {
-    background-color: #F5F6FA !important;
-    width: 260px !important;
-}
-
-/* Labels de filtros */
-label, .stSelectbox label, .stMultiSelect label {
-    color: #333 !important;
-    font-weight: 600 !important;
-}
-
-/* Títulos */
-h1, h2, h3, h4 {
-    color: #222 !important;
-    font-weight: 800 !important;
-}
-
-/* Cards (metric) */
-[data-testid="stMetricLabel"] {
-    font-size: 15px;
-    color: #555;
-}
-[data-testid="stMetricValue"] {
-    font-size: 24px;
-    font-weight: 900;
-    color: #000;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-# ============================================================
-# EXIBE BANNER NO TOPO
-# ============================================================
-load_banner("images/baixados.png")
-
-# ============================================================
-# TÍTULO
-# ============================================================
-st.markdown("""
-<h1>📊 Análise Técnica — Arquivos Enviados (SWS)</h1>
-<h4 style='color:#555;'>Dashboard interativa | Desenvolvido por <b>Silva Adenilton (Denis)</b></h4>
-""", unsafe_allow_html=True)
-
-st.markdown("---")
-
-# ============================================================
+# -------------------------------------------------------------
 # UPLOAD DO ARQUIVO
-# ============================================================
+# -------------------------------------------------------------
+st.markdown("### 📂 Envie o arquivo SWS (.xlsx/.xls)")
+
 uploaded_file = st.file_uploader(
-    "📂 Envie o arquivo SWS (.xlsx/.xls)",
-    type=["xlsx","xls"]
+    "Drag and drop ou selecione o arquivo",
+    type=["xlsx", "xls"]
 )
 
-def read_first_sheet(file):
-    xls = pd.ExcelFile(file)
-    return pd.read_excel(file, sheet_name=xls.sheet_names[0])
+if not uploaded_file:
+    st.info("📘 Envie um arquivo Excel para iniciar a análise.")
+    st.stop()
 
-# ============================================================
-# PROCESSAMENTO DO ARQUIVO
-# ============================================================
-if uploaded_file:
+# -------------------------------------------------------------
+# CARREGAR PLANILHA
+# -------------------------------------------------------------
+try:
+    df_excel = pd.ExcelFile(uploaded_file)
+except:
+    st.error("Erro ao carregar o arquivo. Verifique se é um Excel válido.")
+    st.stop()
 
-    try:
-        excel = pd.ExcelFile(uploaded_file)
-        sheets = [s for s in excel.sheet_names if "CDG" not in s.upper()]  # remove CDG
+abas = [a for a in df_excel.sheet_names if "CDG" not in a.upper()]
 
-        selected_sheet = st.selectbox("📌 Selecione a aba para análise", sheets)
-        df = pd.read_excel(uploaded_file, sheet_name=selected_sheet)
+st.markdown("### ⭐ Selecione a aba para análise")
+selected_sheet = st.selectbox("", abas)
 
-        st.success("Arquivo carregado com sucesso!")
+df = df_excel.parse(selected_sheet)
 
-    except Exception as e:
-        st.error(f"Erro ao carregar arquivo: {e}")
-        st.stop()
+st.success("Arquivo carregado com sucesso!")
 
-    # Normaliza colunas
-    df.columns = [str(c).strip() for c in df.columns]
+# -------------------------------------------------------------
+# FILTROS LATERAIS
+# -------------------------------------------------------------
+st.sidebar.title("Filtros")
 
-    # Detectar colunas automaticamente
-    date_col = next((c for c in ["work_date","date","data"] if c in df.columns), None)
-    code_col = next((c for c in ["code","codigo","cod"] if c in df.columns), None)
-    eff_col  = next((c for c in ["over_effective_area","effective_area"] if c in df.columns), None)
-    not_col  = next((c for c in ["over_not_effective_area","not_effective_area"] if c in df.columns), None)
-    prest_col = next((c for c in ["prestador","provider"] if c in df.columns), None)
-    status_col = next((c for c in ["Status","status"] if c in df.columns), None)
+col_filtros = {}
 
-    # ================= SIDEBAR =================
-    st.sidebar.header("Filtros")
+for col in df.columns:
+    if df[col].dtype == "object":
+        valores = sorted([v for v in df[col].unique() if str(v).strip() != ""])
+        valores.insert(0, "Todos")
 
-    def sidebar_filter(col):
-        if col:
-            options = ["Todos"] + sorted(df[col].dropna().astype(str).unique())
-            return st.sidebar.multiselect(col, options, ["Todos"])
-        return ["Todos"]
+        col_filtros[col] = st.sidebar.multiselect(
+            col,
+            valores,
+            default="Todos"
+        )
 
-    f_prest = sidebar_filter(prest_col)
-    f_status = sidebar_filter(status_col)
-    f_code = sidebar_filter(code_col)
+# APLICAR FILTROS
+df_filtrado = df.copy()
 
-    if date_col:
-        min_d, max_d = df[date_col].min(), df[date_col].max()
-        f_dates = st.sidebar.date_input("Datas", (min_d, max_d))
+for col, escolhas in col_filtros.items():
+    if "Todos" not in escolhas:
+        df_filtrado = df_filtrado[df_filtrado[col].isin(escolhas)]
 
-    # Aplicar filtros
-    df_f = df.copy()
+# -------------------------------------------------------------
+# EXIBIR RESULTADOS
+# -------------------------------------------------------------
+st.markdown("### 📊 Visualização dos Dados Filtrados")
 
-    if prest_col and "Todos" not in f_prest:
-        df_f = df_f[df_f[prest_col].astype(str).isin(f_prest)]
-
-    if status_col and "Todos" not in f_status:
-        df_f = df_f[df_f[status_col].astype(str).isin(f_status)]
-
-    if code_col and "Todos" not in f_code:
-        df_f = df_f[df_f[code_col].astype(str).isin(f_code)]
-
-    if date_col:
-        ini, fim = pd.to_datetime(f_dates[0]), pd.to_datetime(f_dates[1])
-        df_f = df_f[(df_f[date_col] >= ini) & (df_f[date_col] <= fim)]
-
-    if df_f.empty:
-        st.warning("Nenhum dado encontrado com os filtros.")
-        st.stop()
-
-    # ================= KPIs =================
-    k1, k2, k3 = st.columns(3)
-
-    k1.metric("Registros filtrados", len(df_f))
-    if eff_col:
-        k2.metric("Área efetiva", f"{df_f[eff_col].sum():,.2f}")
-    if not_col:
-        k3.metric("Área não efetiva", f"{df_f[not_col].sum():,.2f}")
-
-    st.markdown("---")
-
-    # ================= GRÁFICOS =================
-    if code_col:
-        st.subheader("🏷 Top 10 códigos")
-        vc = df_f[code_col].astype(str).value_counts().head(10)
-        st.plotly_chart(px.bar(vc, title="Top códigos"), use_container_width=True)
-
-    if date_col and eff_col:
-        st.subheader("📈 Evolução diária")
-        df_time = df_f.groupby(date_col)[eff_col].sum().reset_index()
-        st.plotly_chart(px.line(df_time, x=date_col, y=eff_col), use_container_width=True)
-
+if df_filtrado.empty:
+    st.warning("⚠ Nenhum dado encontrado com os filtros selecionados.")
 else:
-    st.info("Envie um arquivo Excel para iniciar a análise.")
+    st.dataframe(df_filtrado, use_container_width=True)
+
+    num_cols = df_filtrado.select_dtypes(include=["number"]).columns
+
+    if len(num_cols) >= 2:
+        st.markdown("### 📈 Gráfico Interativo")
+        x_axis = st.selectbox("Selecione o eixo X", num_cols)
+        y_axis = st.selectbox("Selecione o eixo Y", num_cols)
+
+        fig = px.scatter(df_filtrado, x=x_axis, y=y_axis, color=num_cols[0])
+        st.plotly_chart(fig, use_container_width=True)
+
+# -------------------------------------------------------------
+# RODAPÉ
+# -------------------------------------------------------------
+st.markdown(
+    """
+    <hr>
+    <p style='text-align:center; color:#666; font-size:14px;'>
+        © 2025 — Desenvolvido por Silva Adenilton (Denis) | Hexagon<br>
+        Dashboard profissional para análise de dados SWS.
+    </p>
+    """,
+    unsafe_allow_html=True
+)
