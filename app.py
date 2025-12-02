@@ -1,177 +1,119 @@
 import streamlit as st
 import pandas as pd
-import base64
+import matplotlib.pyplot as plt
 
-# ============================================================
-# ESTILO — MELHORAR VISIBILIDADE DE TEXTOS NO MODO ESCURO
-# ============================================================
-st.markdown("""
-<style>
-/* Textos de inputs, selectboxes e labels */
-.stSelectbox label, .stSelectbox div, .stSelectbox span,
-.st-b7, .st-bs, .css-1d391kg, .css-16huue1 {
-    color: #FFFFFF !important;
-    font-weight: 600 !important;
-}
+st.set_page_config(page_title="SWS Análises", layout="wide")
 
-/* Títulos do sidebar */
-[data-testid="stSidebar"] h1, 
-[data-testid="stSidebar"] h2, 
-[data-testid="stSidebar"] h3, 
-[data-testid="stSidebar"] label {
-    color: #FFFFFF !important;
-}
+st.title("📊 Análise de Dados SWS")
 
-/* Caixa do selectbox - borda mais visível */
-.stSelectbox > div {
-    border-color: #AAAAAA !important;
-}
-</style>
-""", unsafe_allow_html=True)
+# Upload do arquivo
+uploaded_file = st.file_uploader("📁 Envie o arquivo Excel", type=["xlsx"])
 
+if uploaded_file:
 
-# ============================================================
-# LOGO SUPERIOR
-# ============================================================
-def load_logo(image_path):
-    """Exibe o logo no topo do dashboard."""
-    try:
-        with open(image_path, "rb") as img:
-            encoded = base64.b64encode(img.read()).decode()
-
-        st.markdown(
-            f"""
-            <div style='display:flex; align-items:center; gap:18px; margin-bottom:25px;'>
-                <img src='data:image/png;base64,{encoded}'
-                     style='width:110px; height:auto; border-radius:8px;'>
-                <div>
-                    <h1 style='margin:0; padding:0; font-size:36px; color:white;'>
-                        📊 Análise Técnica — Arquivos Enviados (SWS)
-                    </h1>
-                    <h4 style='margin:0; padding:0; color:#CCC;'>
-                        Dashboard interativa | Desenvolvido por <b>Silva Adenilton (Denis)</b>
-                    </h4>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    except:
-        st.warning("⚠ Não foi possível carregar o logo.")
-
-
-# ============================================================
-# CONFIGURAÇÃO DA PÁGINA
-# ============================================================
-st.set_page_config(page_title="Analise Técnica SWS", layout="wide")
-load_logo("images/baixados.png")
-
-st.markdown("### 📂 Envie o arquivo SWS (.xlsx / .xls)")
-uploaded_file = st.file_uploader("Arraste ou selecione o arquivo", type=["xlsx", "xls"])
-
-if not uploaded_file:
-    st.info("Envie um arquivo Excel para iniciar a análise.")
-    st.stop()
-
-
-# ============================================================
-# CARREGAR ARQUIVO E FILTRAR APENAS ABAS SWS
-# ============================================================
-try:
-    all_sheets = pd.ExcelFile(uploaded_file).sheet_names
-    df_all = pd.read_excel(uploaded_file, sheet_name=None)
-
-    # 🔥 Filtrar somente abas que começam com SWS
-    sheets = [s for s in all_sheets if str(s).strip().lower().startswith("sws")]
+    # 🔥 Carregar sheets
+    xls = pd.ExcelFile(uploaded_file)
+    sheets = [s for s in xls.sheet_names if str(s).strip().lower().startswith("sws")]
 
     if not sheets:
-        st.error("❌ O arquivo não possui nenhuma aba começando com 'SWS'.")
+        st.error("❌ Nenhuma aba iniciando com 'SWS' encontrada.")
         st.stop()
 
-    chosen_sheet = st.selectbox("⭐ Selecione a aba para análise", sheets)
-    df = df_all[chosen_sheet]
+    # Selectbox só com abas SWS
+    chosen_sheet = st.selectbox("📄 Selecione a aba SWS", sheets)
 
-except Exception as e:
-    st.error(f"Erro ao ler arquivo: {e}")
-    st.stop()
+    # Carregar o dataframe da aba selecionada
+    df = pd.read_excel(uploaded_file, sheet_name=chosen_sheet)
 
-st.success("Arquivo carregado com sucesso!")
+    # Normalizar colunas
+    df.columns = [str(c).strip().lower() for c in df.columns]
 
+    # Garantir colunas necessárias
+    necessary_cols = [
+        "prestador", "serial_number", "work_date",
+        "over_effective_area", "over_not_effective_area", "error_msg"
+    ]
+    for col in necessary_cols:
+        if col not in df.columns:
+            st.error(f"❌ Coluna obrigatória ausente: {col}")
+            st.stop()
 
-# ============================================================
-# AJUSTAR NOMES DE COLUNAS (CORRIGE O ERRO)
-# ============================================================
-df.columns = [str(c).strip().lower() for c in df.columns]
+    # Converter work_date
+    df["work_date"] = pd.to_datetime(df["work_date"], errors="coerce")
 
-required_cols = [
-    "prestador", "serial_number", "status",
-    "over_effective_area", "over_not_effective_area"
-]
+    st.subheader("🔍 Filtros")
 
-missing = [col for col in required_cols if col not in df.columns]
-if missing:
-    st.error(f"❌ As seguintes colunas obrigatórias não existem na aba selecionada:\n\n{missing}")
-    st.stop()
+    col1, col2, col3 = st.columns(3)
 
-# Converter áreas numéricas
-df["over_effective_area"] = pd.to_numeric(df["over_effective_area"], errors="coerce").fillna(0)
-df["over_not_effective_area"] = pd.to_numeric(df["over_not_effective_area"], errors="coerce").fillna(0)
+    # Filtro prestador
+    prestador_list = sorted(df["prestador"].dropna().unique())
+    prestador_filter = col1.selectbox("Prestador:", ["Todos"] + prestador_list)
 
+    # Filtro serial
+    serial_list = sorted(df["serial_number"].dropna().unique())
+    serial_filter = col2.selectbox("Serial Number:", ["Todos"] + list(serial_list))
 
-# ============================================================
-# SIDEBAR — FILTROS
-# ============================================================
-st.sidebar.header("Filtros")
+    # Filtro datas
+    min_date = df["work_date"].min()
+    max_date = df["work_date"].max()
 
-prest_options = ["Todos"] + sorted(df["prestador"].dropna().astype(str).unique())
-prest_sel = st.sidebar.selectbox("Prestador", prest_options)
+    work_date_filter = col3.date_input(
+        "Período (work_date):",
+        value=[min_date, max_date]
+    )
 
-serial_options = ["Todos"] + sorted(df["serial_number"].dropna().astype(str).unique())
-serial_sel = st.sidebar.selectbox("Serial Number", serial_options)
+    # Aplicando filtros
+    df_filtered = df.copy()
 
-status_options = ["Todos"] + sorted(df["status"].dropna().astype(str).unique())
-status_sel = st.sidebar.selectbox("Status", status_options)
+    if prestador_filter != "Todos":
+        df_filtered = df_filtered[df_filtered["prestador"] == prestador_filter]
 
+    if serial_filter != "Todos":
+        df_filtered = df_filtered[df_filtered["serial_number"] == serial_filter]
 
-# ============================================================
-# APLICAR FILTROS
-# ============================================================
-df_filt = df.copy()
+    df_filtered = df_filtered[
+        (df_filtered["work_date"] >= pd.to_datetime(work_date_filter[0])) &
+        (df_filtered["work_date"] <= pd.to_datetime(work_date_filter[1]))
+    ]
 
-if prest_sel != "Todos":
-    df_filt = df_filt[df_filt["prestador"].astype(str) == prest_sel]
+    st.subheader("📌 Dados Filtrados")
+    st.dataframe(df_filtered, use_container_width=True)
 
-if serial_sel != "Todos":
-    df_filt = df_filt[df_filt["serial_number"].astype(str) == serial_sel]
+    # --- SOMATÓRIAS ---
+    st.subheader("📐 Somatórios")
 
-if status_sel != "Todos":
-    df_filt = df_filt[df_filt["status"].astype(str) == status_sel]
+    soma_effective = df_filtered["over_effective_area"].sum()
+    soma_not_effective = df_filtered["over_not_effective_area"].sum()
 
-if df_filt.empty:
-    st.warning("⚠ Nenhum dado encontrado com os filtros aplicados.")
-    st.stop()
+    colA, colB = st.columns(2)
+    colA.metric("🔵 Total over_effective_area", f"{soma_effective:,.2f}")
+    colB.metric("🟣 Total over_not_effective_area", f"{soma_not_effective:,.2f}")
 
+    # Erros
+    erro_counts = df_filtered["error_msg"].value_counts()
 
-# ============================================================
-# KPIs — SOMATÓRIOS
-# ============================================================
-st.markdown("---")
+    st.subheader("🚨 Ocorrências de Erros")
+    st.write(erro_counts)
 
-k1, k2 = st.columns(2)
+    # --- GRÁFICO DAS SOMATÓRIAS ---
+    st.subheader("📊 Gráfico: Somatória das Áreas")
 
-k1.metric(
-    "Área Efetiva Total (Filtro Aplicado)",
-    f"{df_filt['over_effective_area'].sum():,.2f}"
-)
+    fig1, ax1 = plt.subplots(figsize=(6, 4))
+    ax1.bar(["over_effective_area", "over_not_effective_area"],
+            [soma_effective, soma_not_effective])
+    ax1.set_ylabel("Somatória")
+    ax1.set_title("Somatório das Áreas")
+    st.pyplot(fig1)
 
-k2.metric(
-    "Área Não Efetiva Total (Filtro Aplicado)",
-    f"{df_filt['over_not_effective_area'].sum():,.2f}"
-)
+    # --- GRÁFICO DE ERROS ---
+    st.subheader("📉 Gráfico: Ocorrência de Erros")
 
-
-# ============================================================
-# TABELA DE RESULTADOS
-# ============================================================
-st.markdown("### 📄 Registros filtrados")
-st.dataframe(df_filt, use_container_width=True)
+    if not erro_counts.empty:
+        fig2, ax2 = plt.subplots(figsize=(7, 4))
+        ax2.bar(erro_counts.index.astype(str), erro_counts.values)
+        ax2.set_ylabel("Quantidade")
+        ax2.set_title("Quantidade de Erros por Tipo")
+        plt.xticks(rotation=45, ha="right")
+        st.pyplot(fig2)
+    else:
+        st.info("Nenhum erro encontrado nos filtros aplicados.")
