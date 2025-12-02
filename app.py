@@ -3,38 +3,32 @@ import pandas as pd
 import base64
 
 # ============================================================
-# CONFIGURAÇÃO DE TEMA (clarear textos)
+# ESTILO — MELHORAR VISIBILIDADE DE TEXTOS NO MODO ESCURO
 # ============================================================
 st.markdown("""
 <style>
-/* Clarear texto dos filtros */
+/* Textos de inputs, selectboxes e labels */
 .stSelectbox label, .stSelectbox div, .stSelectbox span,
-.css-16huue1, .css-1d391kg, .st-b7, .st-bs {
-    color: #ffffff !important;
+.st-b7, .st-bs, .css-1d391kg, .css-16huue1 {
+    color: #FFFFFF !important;
     font-weight: 600 !important;
 }
 
-/* Sidebar */
-.sidebar .sidebar-content, .stSidebar, .css-1d391kg {
-    color: #ffffff !important;
+/* Títulos do sidebar */
+[data-testid="stSidebar"] h1, 
+[data-testid="stSidebar"] h2, 
+[data-testid="stSidebar"] h3, 
+[data-testid="stSidebar"] label {
+    color: #FFFFFF !important;
 }
 
-/* Texto dos inputs e opções */
-div[data-baseweb="select"] * {
-    color: #ffffff !important;
-}
-
-/* Clarear dropdown */
-.stSelectbox [data-baseweb="popover"] * {
-    color: #000000 !important;
-}
-
-/* Títulos */
-h1, h2, h3, h4 {
-    color: #f1f1f1 !important;
+/* Caixa do selectbox - borda mais visível */
+.stSelectbox > div {
+    border-color: #AAAAAA !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 # ============================================================
 # LOGO SUPERIOR
@@ -51,10 +45,10 @@ def load_logo(image_path):
                 <img src='data:image/png;base64,{encoded}'
                      style='width:110px; height:auto; border-radius:8px;'>
                 <div>
-                    <h1 style='margin:0; padding:0; font-size:36px; color:#fff;'>
+                    <h1 style='margin:0; padding:0; font-size:36px; color:white;'>
                         📊 Análise Técnica — Arquivos Enviados (SWS)
                     </h1>
-                    <h4 style='margin:0; padding:0; color:#ddd;'>
+                    <h4 style='margin:0; padding:0; color:#CCC;'>
                         Dashboard interativa | Desenvolvido por <b>Silva Adenilton (Denis)</b>
                     </h4>
                 </div>
@@ -79,12 +73,20 @@ if not uploaded_file:
     st.info("Envie um arquivo Excel para iniciar a análise.")
     st.stop()
 
+
 # ============================================================
-# CARREGAR ARQUIVO E ABA
+# CARREGAR ARQUIVO E FILTRAR APENAS ABAS SWS
 # ============================================================
 try:
-    sheets = pd.ExcelFile(uploaded_file).sheet_names
+    all_sheets = pd.ExcelFile(uploaded_file).sheet_names
     df_all = pd.read_excel(uploaded_file, sheet_name=None)
+
+    # 🔥 Filtrar somente abas que começam com SWS
+    sheets = [s for s in all_sheets if str(s).strip().lower().startswith("sws")]
+
+    if not sheets:
+        st.error("❌ O arquivo não possui nenhuma aba começando com 'SWS'.")
+        st.stop()
 
     chosen_sheet = st.selectbox("⭐ Selecione a aba para análise", sheets)
     df = df_all[chosen_sheet]
@@ -95,8 +97,9 @@ except Exception as e:
 
 st.success("Arquivo carregado com sucesso!")
 
+
 # ============================================================
-# AJUSTAR NOMES DE COLUNAS (correção do erro)
+# AJUSTAR NOMES DE COLUNAS (CORRIGE O ERRO)
 # ============================================================
 df.columns = [str(c).strip().lower() for c in df.columns]
 
@@ -114,6 +117,7 @@ if missing:
 df["over_effective_area"] = pd.to_numeric(df["over_effective_area"], errors="coerce").fillna(0)
 df["over_not_effective_area"] = pd.to_numeric(df["over_not_effective_area"], errors="coerce").fillna(0)
 
+
 # ============================================================
 # SIDEBAR — FILTROS
 # ============================================================
@@ -127,6 +131,7 @@ serial_sel = st.sidebar.selectbox("Serial Number", serial_options)
 
 status_options = ["Todos"] + sorted(df["status"].dropna().astype(str).unique())
 status_sel = st.sidebar.selectbox("Status", status_options)
+
 
 # ============================================================
 # APLICAR FILTROS
@@ -146,6 +151,7 @@ if df_filt.empty:
     st.warning("⚠ Nenhum dado encontrado com os filtros aplicados.")
     st.stop()
 
+
 # ============================================================
 # KPIs — SOMATÓRIOS
 # ============================================================
@@ -162,6 +168,7 @@ k2.metric(
     "Área Não Efetiva Total (Filtro Aplicado)",
     f"{df_filt['over_not_effective_area'].sum():,.2f}"
 )
+
 
 # ============================================================
 # TABELA DE RESULTADOS
