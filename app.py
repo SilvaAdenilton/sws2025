@@ -1,119 +1,170 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
 
-st.set_page_config(page_title="SWS Análises", layout="wide")
+# =====================
+# CONFIGURAÇÃO GERAL
+# =====================
+st.set_page_config(page_title="Análise Técnica – SWS", layout="wide", page_icon="📊")
 
-st.title("📊 Análise de Dados SWS")
+st.markdown("""
+<style>
+/*****************************/
+/* Sidebar */
+/*****************************/
+section[data-testid="stSidebar"] * {
+    color: white !important;
+}
 
-# Upload do arquivo
-uploaded_file = st.file_uploader("📁 Envie o arquivo Excel", type=["xlsx"])
+/*****************************/
+/* Selectbox e inputs */
+/*****************************/
+.stSelectbox label, .stSelectbox div, .stSelectbox span {
+    color: white !important;
+}
+.css-16huue1, .css-1d391kg, .st-b7, .st-bs {
+    color: white !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# =====================
+# TÍTULO
+# =====================
+st.title("📊 Análise Técnica — Arquivos Enviados (SWS)")
+st.subheader("Dashboard interativa | Desenvolvido por Adenilton Silva (Denis)")
+
+# =====================
+# UPLOAD DO ARQUIVO
+# =====================
+st.markdown("### 📁 Envie o arquivo SWS (.xlsx / .xls)")
+uploaded_file = st.file_uploader("Arraste ou selecione o arquivo", type=["xlsx", "xls"])
 
 if uploaded_file:
+    # Ler sheets
+    excel = pd.ExcelFile(uploaded_file)
+    sheets = excel.sheet_names
 
-    # 🔥 Carregar sheets
-    xls = pd.ExcelFile(uploaded_file)
-    sheets = [s for s in xls.sheet_names if str(s).strip().lower().startswith("sws")]
+    # Filtrar apenas abas SWS
+    sheets = [s for s in sheets if str(s).strip().lower().startswith("sws")]
 
     if not sheets:
-        st.error("❌ Nenhuma aba iniciando com 'SWS' encontrada.")
+        st.error("❌ Nenhuma aba começando com 'SWS' encontrada no arquivo.")
         st.stop()
 
-    # Selectbox só com abas SWS
-    chosen_sheet = st.selectbox("📄 Selecione a aba SWS", sheets)
+    df_all = pd.read_excel(uploaded_file, sheet_name=None)
 
-    # Carregar o dataframe da aba selecionada
-    df = pd.read_excel(uploaded_file, sheet_name=chosen_sheet)
+    # Select aba
+    chosen_sheet = st.selectbox("⭐ Selecione a aba para análise", sheets)
 
-    # Normalizar colunas
+    df = df_all[chosen_sheet]
+
+    # Normalização das colunas
     df.columns = [str(c).strip().lower() for c in df.columns]
 
-    # Garantir colunas necessárias
-    necessary_cols = [
-        "prestador", "serial_number", "work_date",
-        "over_effective_area", "over_not_effective_area", "error_msg"
-    ]
-    for col in necessary_cols:
-        if col not in df.columns:
-            st.error(f"❌ Coluna obrigatória ausente: {col}")
-            st.stop()
+    # Conversão work_date
+    if "work_date" in df.columns:
+        df["work_date"] = pd.to_datetime(df["work_date"], errors="coerce")
 
-    # Converter work_date
-    df["work_date"] = pd.to_datetime(df["work_date"], errors="coerce")
+    # =====================
+    # SIDEBAR – FILTROS
+    # =====================
+    st.sidebar.header("Filtros")
 
-    st.subheader("🔍 Filtros")
+    # Prestador
+    prestadores = ["Todos"] + sorted(df["prestador"].dropna().unique().tolist())
+    prestador_filtro = st.sidebar.selectbox("Prestador", prestadores)
 
-    col1, col2, col3 = st.columns(3)
+    # Serial Number
+    serials = ["Todos"] + sorted(df["serial_number"].dropna().unique().tolist())
+    serial_filtro = st.sidebar.selectbox("Serial Number", serials)
 
-    # Filtro prestador
-    prestador_list = sorted(df["prestador"].dropna().unique())
-    prestador_filter = col1.selectbox("Prestador:", ["Todos"] + prestador_list)
+    # Status
+    status_list = ["Todos"] + sorted(df["status"].dropna().unique().tolist())
+    status_filtro = st.sidebar.selectbox("Status", status_list)
 
-    # Filtro serial
-    serial_list = sorted(df["serial_number"].dropna().unique())
-    serial_filter = col2.selectbox("Serial Number:", ["Todos"] + list(serial_list))
+    # Work_date
+    if "work_date" in df.columns:
+        min_date = df["work_date"].min()
+        max_date = df["work_date"].max()
 
-    # Filtro datas
-    min_date = df["work_date"].min()
-    max_date = df["work_date"].max()
+        work_date_filter = st.sidebar.date_input(
+            "Work Date",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date
+        )
+        start_date, end_date = pd.to_datetime(work_date_filter[0]), pd.to_datetime(work_date_filter[1])
 
-    work_date_filter = col3.date_input(
-        "Período (work_date):",
-        value=[min_date, max_date]
-    )
-
-    # Aplicando filtros
+    # =====================
+    # APLICAR FILTROS
+    # =====================
     df_filtered = df.copy()
 
-    if prestador_filter != "Todos":
-        df_filtered = df_filtered[df_filtered["prestador"] == prestador_filter]
+    if prestador_filtro != "Todos":
+        df_filtered = df_filtered[df_filtered["prestador"] == prestador_filtro]
 
-    if serial_filter != "Todos":
-        df_filtered = df_filtered[df_filtered["serial_number"] == serial_filter]
+    if serial_filtro != "Todos":
+        df_filtered = df_filtered[df_filtered["serial_number"] == serial_filtro]
 
-    df_filtered = df_filtered[
-        (df_filtered["work_date"] >= pd.to_datetime(work_date_filter[0])) &
-        (df_filtered["work_date"] <= pd.to_datetime(work_date_filter[1]))
-    ]
+    if status_filtro != "Todos":
+        df_filtered = df_filtered[df_filtered["status"] == status_filtro]
 
-    st.subheader("📌 Dados Filtrados")
+    if "work_date" in df.columns:
+        df_filtered = df_filtered[
+            (df_filtered["work_date"] >= start_date) &
+            (df_filtered["work_date"] <= end_date)
+        ]
+
+    # =====================
+    # SOMATÓRIAS
+    # =====================
+    total_effective = df_filtered.get("over_effective_area", pd.Series([0])).sum()
+    total_not_effective = df_filtered.get("over_not_effective_area", pd.Series([0])).sum()
+
+    col1, col2 = st.columns(2)
+    col1.metric("Área Efetiva Total (Filtro Aplicado)", f"{total_effective:,.2f}")
+    col2.metric("Área Não Efetiva Total (Filtro Aplicado)", f"{total_not_effective:,.2f}")
+
+    # =====================
+    # GRÁFICOS
+    # =====================
+    st.markdown("## 📊 Gráficos da Análise")
+
+    # Gráfico das áreas
+    areas_df = pd.DataFrame({
+        "Tipo": ["Área Efetiva", "Área Não Efetiva"],
+        "Valor": [total_effective, total_not_effective]
+    })
+
+    fig_areas = px.bar(
+        areas_df,
+        x="Tipo",
+        y="Valor",
+        title="Somatória das Áreas (Filtro Aplicado)",
+        text="Valor",
+    )
+    st.plotly_chart(fig_areas, use_container_width=True)
+
+    # Gráfico dos erros
+    if "error_msg" in df_filtered.columns:
+        error_counts = df_filtered["error_msg"].fillna("SEM ERRO").value_counts().reset_index()
+        error_counts.columns = ["Erro", "Quantidade"]
+
+        fig_erros = px.bar(
+            error_counts,
+            x="Erro",
+            y="Quantidade",
+            title="Ocorrências de Erros",
+            text="Quantidade"
+        )
+        st.plotly_chart(fig_erros, use_container_width=True)
+
+    # =====================
+    # TABELA FINAL
+    # =====================
+    st.markdown("## 📄 Registros filtrados")
     st.dataframe(df_filtered, use_container_width=True)
 
-    # --- SOMATÓRIAS ---
-    st.subheader("📐 Somatórios")
-
-    soma_effective = df_filtered["over_effective_area"].sum()
-    soma_not_effective = df_filtered["over_not_effective_area"].sum()
-
-    colA, colB = st.columns(2)
-    colA.metric("🔵 Total over_effective_area", f"{soma_effective:,.2f}")
-    colB.metric("🟣 Total over_not_effective_area", f"{soma_not_effective:,.2f}")
-
-    # Erros
-    erro_counts = df_filtered["error_msg"].value_counts()
-
-    st.subheader("🚨 Ocorrências de Erros")
-    st.write(erro_counts)
-
-    # --- GRÁFICO DAS SOMATÓRIAS ---
-    st.subheader("📊 Gráfico: Somatória das Áreas")
-
-    fig1, ax1 = plt.subplots(figsize=(6, 4))
-    ax1.bar(["over_effective_area", "over_not_effective_area"],
-            [soma_effective, soma_not_effective])
-    ax1.set_ylabel("Somatória")
-    ax1.set_title("Somatório das Áreas")
-    st.pyplot(fig1)
-
-    # --- GRÁFICO DE ERROS ---
-    st.subheader("📉 Gráfico: Ocorrência de Erros")
-
-    if not erro_counts.empty:
-        fig2, ax2 = plt.subplots(figsize=(7, 4))
-        ax2.bar(erro_counts.index.astype(str), erro_counts.values)
-        ax2.set_ylabel("Quantidade")
-        ax2.set_title("Quantidade de Erros por Tipo")
-        plt.xticks(rotation=45, ha="right")
-        st.pyplot(fig2)
-    else:
-        st.info("Nenhum erro encontrado nos filtros aplicados.")
+else:
+    st.info("⬆️ Envie um arquivo para iniciar a análise.")
